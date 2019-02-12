@@ -1,0 +1,179 @@
+############################################################
+# Playbook to upload current IOS image to Cisco routers
+#
+# This playbook will first gather facts, verify that the
+# router the appropriate model, that there is enough free
+# space in Flash to store the new image, and then uploads it
+# if the file isn't already there.
+#
+# To configure this playbook, simply set the vars
+# near the top that specify the Flash drive to upload to,
+# the image filename and its size, the URL from which to
+# copy the image file, and the model of Cisco router.
+#
+# For reference, see comments, which describe the settings
+# used for a Cisco 3945 router.  In fact, all commands, etc.
+# shown are from a Cisco 3945.  Adjust as needed.
+#
+############################################################
+---
+- name: MAKE SURE CURRENT CISCO IOS IMAGE IS IN FLASH
+  hosts: "{{ host | default('all') }}"
+  connection: network_cli
+  vars:
+    ############################################################
+    # SET THE FOLLOWING VARIABLES
+    ############################################################
+    # FLASH DRIVE TO UPLOAD IOS IMAGE TO
+    # NOTE:  Verify that the correct drive is shown in conditionals/etc.
+    # e.g.,
+    # drive: 'flash0:'
+    drive: 
+    # IOS IMAGE FILENAME
+    # e.g.,
+    # ios_image_file: c3900-universalk9-mz.SPA.157-3.M3.bin
+    ios_image_file: 
+    # IOS IMAGE FILE SIZE (IN KB)
+    # e.g.,
+    # ios_image_size_kb: 112765
+    ios_image_size_kb: 
+    # BASE URL TO COPY IOS IMAGE FILE FROM (i.e., base_url/ios_image_file)
+    # e.g., if full URL was http://10.1.0.10/ios/c3900-universalk9-mz.SPA.157-3.M3.bin
+    # base_url: http://10.1.0.10/ios
+    base_url: 
+    # CISCO MODEL NUMBER
+    # e.g., On a Cisco 3945 with 'show version' you see 'CISCO3945-CHASSIS', so you might use
+    # model: '3945'
+    model: 
+    ############################################################
+    # WARNING:  DO NOT MODIFY BEYOND THIS POINT
+    ############################################################
+    drive_no_colon: "{{ drive | regex_replace('^(.*):$', '\\1')}}"
+
+  tasks:
+    ############################################################
+    # Collect data on router
+    ############################################################
+    - name: Gather router facts
+      ios_facts:
+
+    - name: Collect list of files stored in flash
+      ios_command:
+        commands: dir
+      register: flash_files
+
+    - name: UPGRADE IF NOT RUNNING CURRENT IOS VERSION
+      block:
+        ############################################################
+        # FAIL with appropriate error message if router
+        # 1. Is not the correct model of Cisco router
+        # 2. Does not have enough free space (and doesn't already have image)
+        ############################################################
+        - name: Check if router is NOT a {{ model }}
+          fail:
+            msg:
+              - "ERROR: Cannot upload {{ ios_image_file }}. {{ inventory_hostname }} is not a {{ model }}."
+          when:
+            - not ansible_net_model | regex_search(model)
+
+        - name: Check if router does NOT have enough free storage space (and does NOT already have IOS image)
+          fail:
+            msg:
+              - "ERROR: Cannot upload {{ ios_image_file }} to {{ inventory_hostname }}. Only {{ ansible_net_filesystems_info[(drive)]['spacefree_kb'] }} KB available. Need {{ ios_image_size_kb }} KB."
+          when:
+            - flash_files.stdout[0].find(ios_image_file) == -1
+            - ansible_net_filesystems_info[(drive)]['spacefree_kb'] <= ios_image_size_kb
+
+        ############################################################
+        # If we make it here, it's time to upload the IOS image.
+        # Note we're using ios_command, meaning we have to specify
+        # the command as we'd type it if we SSH'd in.  This may
+        # vary between versions of IOS, so you're warned.
+        ############################################################
+        - name: Copy IOS image onto router when appropriate
+          ios_command:
+            commands:
+              - "copy {{base_url}}/{{ios_image_file}} {{drive}}\n"
+              - "\n"
+            wait_for:
+              - result[0] contains Destination
+          vars:
+            ansible_command_timeout: 1200
+          when:
+            - ansible_net_model | regex_search(model)
+            - ansible_net_filesystems_info[(drive)]['spacefree_kb'] > ios_image_size_kb
+            - flash_files.stdout[0].find(ios_image_file) == -1
+
+        - name: Collect list of files stored in flash again
+          ios_command:
+            commands: dir
+          register: flash_files
+
+        - name: Verify that the IOS image is now on the router
+          fail:
+            msg:
+              - "Router {{ inventory_hostname }} still does NOT have IOS image file {{ ios_image_file }}."
+          when:
+            - flash_files.stdout[0].find(ios_image_file) == -1
+
+        ############################################################
+        # Again, be wary that the 'boot system' command varies
+        # between versions of IOS, notably the 3945 router vs. the
+        # L2/L3 internal switch module that's available. Sometimes
+        # there's a colon (switch module), sometimes not (router).
+        ############################################################
+        - name: Set boot image if necessary
+          ios_config:
+            lines:
+              - no boot system
+              - "boot system {{drive_no_colon}} {{ios_image_file}}"
+            match: none
+            replace: block
+            save_when: modified
+            # save_when: changed == when this playbook changes the config
+            # save_when: modified == when running-config has changed since last save
+          when:
+            - flash_files.stdout[0].find(ios_image_file) != -1
+
+        - name: RELOAD THE ROUTER
+          ios_command:
+            commands:
+              - "reload reason Updating IOS image...\n"
+              - "\n"
+            wait_for:
+              - result[0] contains confirm
+          ignore_errors: yes
+          vars:
+            ansible_command_timeout: 600
+
+        - name: WAIT FOR ROUTER TO RETURN
+          wait_for:
+            host: "{{ansible_host}}"
+            port: 22
+            delay: 60
+          delegate_to: localhost
+
+        - name: GATHER ROUTER FACTS FOR VERIFICATION
+          ios_facts:
+
+        - name: COLLECT LIST OF FILES STORED IN FLASH AFTER REBOOT
+          ios_command:
+            commands: dir
+          register: flash_files
+
+        - name: ASSERT THAT THE IOS VERSION IS CORRECT
+          assert:
+            that:
+              - flash_files.stdout[0].find(ios_image_file) != -1
+              - ansible_net_image.find(ios_image_file) != -1
+      when:
+        - ansible_net_image.find(ios_image_file) == -1
+
+
+# Possible playbook run:
+# ansible-playbook upload-ios.yml
+# ansible-playbook upload-ios.yml | grep "Router:" | sort
+# ansible-playbook upload-ios.yml --limit <somehostname> -v
+
+# AD-HOC COMMAND TO FIND ALL image files on 3945 routers
+# ansible all -a "dir | i c3900" | grep "CHANGED\|c3900"

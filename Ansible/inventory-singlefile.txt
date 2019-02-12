@@ -1,0 +1,35 @@
+[customers:children]
+offices
+schools
+
+[offices:children]
+northoffices
+southoffices
+
+[northoffices]
+office1                 ansible_host=10.0.1.1
+office2                 ansible_host=10.0.1.2
+
+[southoffices]
+office3                 ansible_host=10.0.1.3
+office4                 ansible_host=10.0.1.4
+
+[schools:children]
+northschools
+southschools
+
+[northschools]
+school1                 ansible_host=10.0.1.11
+school2                 ansible_host=10.0.1.12
+
+[southschools]
+school3                 ansible_host=10.0.1.13
+school4                 ansible_host=10.0.1.14
+
+[north]
+northoffices
+northschools
+
+[south]
+southoffices
+southschools
