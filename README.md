@@ -7,7 +7,7 @@ Note I have organized information into directories according to the tool used.
 
 ## Other Sources
 
-* ![NetworktoCode's curated awesome-network-automation list](https://github.com/networktocode/awesome-network-automation)
+* [NetworktoCode's curated awesome-network-automation list](https://github.com/networktocode/awesome-network-automation)
   * Hands down the most complete list of links/etc. regarding network automation.  Bookmark this.
 
 <img src="https://www.ansible.com/hubfs/2016_Images/Assets/Ansible-Mark-Large-RGB-Mango.png?hsLang=en-us" height=100>
