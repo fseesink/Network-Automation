@@ -4,7 +4,7 @@
 
 #### Configuration used (as of Feb 2019)
 - macOS 10.14.3
-- Ansible 2.7.6
+- Ansible 2.7.7
 
 ----
 This directory contains various (sanitized) example **Ansible playbooks** I've written, along with other tidbits I've gleaned over time.  It is very much a work in progress.  I realize there are many ways to do things in Ansible, and the ways shown here are far from perfect.  But hopefully someone will find this information helpful.
@@ -40,6 +40,8 @@ I have tried to comment the playbooks extensively for the purpose of explaining 
 The fictitious network in question is that of an ISP (hereafter called THE NETWORK) and involves two (2) Points of Presence (POPs) that we'll simply refer to as `north` and `south`.  The two POPs are connected to each other, and all customer circuits land at one of the two POPs.  (For a visual reference, imagine a bicycle, where the hubs of the wheels are the POPs and the spokes on the wheels fan out to the customers.  The frame of the bicycle connects the one hub to the other.)  And from each POP there are circuits out to the Internet.
 
 We'll stick to basic RFC1918 private IPv4 addressing.  THE NETWORK owns the IPv4 10.0.0.0/8.  We'll imagine all customers are provided `10.x.x.x` subnets, and that each Customer Premise Equipment (CPE) router is configured with a loopback interface that is set to a `10.0.1.x/32` IP address.  All appropriate routing is assumed to be working.  It will also be assumed that all CPE gear is configured for Authentication, Authorization, and Accounting (AAA) using RADIUS or TACACS+.  (Hence the loopback IPs.)  That is, the idea here is that you, as network admin, are able to SSH into each and every piece of network equipment using a single username/password.  (I would go into setting up SSH keys, but for now let's keep things simple.)
+
+One thing specific to this setup is that the AAA configuration lands the user at **Privileged EXEC mode** (level 15).  That is, whereas by default you typically login at **User EXEC mode**, then use the `enable` command, here the setup has you going directly to Privileged EXEC mode.  For those where this is not the case, you'll want to look into `ansible_become` and read the [using become with network modules guide](https://docs.ansible.com/ansible/latest/user_guide/become.html#become-network).
 
 Please note that as Ansible was originally intended for host management, the term they use for a device you manage is a `host`.  So we will use this term though we'll be talking about routers, switches, etc. as `hosts`.
 
